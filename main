@@ -1,0 +1,364 @@
+local TotalWeight = 0
+local InWork = {}
+local value = "ДуркоБаксы"
+local minPrice = 1000
+local rs = game:GetService("RunService")
+local sounds = {
+	["Start"] = {["SoundId"] = "rbxassetid://6129190959", RollOffMaxDistance = 1000, RollOffMinDistance = 5},
+	["ValueChange"] = {["SoundId"] = "rbxassetid://177266782", RollOffMaxDistance = 1000, RollOffMinDistance = 5},
+	["Win"] = {["SoundId"] = "rbxassetid://4879566787", RollOffMaxDistance = 1000, RollOffMinDistance = 5},
+	["Stopped"] = {["SoundId"] = "rbxassetid://11334430699", RollOffMaxDistance = 1000, RollOffMinDistance = 5},
+	["Lose"] = {["SoundId"] = "rbxassetid://11334440534", RollOffMaxDistance = 1000, RollOffMinDistance = 5},
+	["Working"] = {["SoundId"] = "rbxassetid://11335164730", RollOffMaxDistance = 1000, RollOffMinDistance = 5},
+}
+local chances = {
+	["Семерка"] = {
+		ImageId = "rbxassetid://11334481764",
+		Chance = 10,
+		MultiplierWin = 10,
+	},
+
+	["Деньги"] = {
+		ImageId = "rbxassetid://7538728424",
+		Chance = 17,
+		MultiplierWin = 5,
+	},
+
+	["Банан"] = {
+		ImageId = "rbxassetid://500109536",
+		Chance = 45,
+		MultiplierWin = 1.8
+	},
+
+	["Макака"] = {
+		ImageId = "rbxassetid://4275313474",
+		Chance = 75,
+		MultiplierWin = 1.3
+	}
+}
+
+for _,ItemData in pairs(chances) do
+	ItemData.Chance /= 100
+	TotalWeight = TotalWeight + ItemData.Chance
+end
+
+local function chooseRandomItem()
+	local Chance = Random.new(math.random(tick()/2, tick())):NextNumber(0, TotalWeight)
+	local Counter = 0
+
+	for Index,ItemData in pairs(chances) do
+		Counter = Counter + ItemData.Chance
+		if Chance <= Counter then
+			return Index
+		end
+	end
+end
+
+local function InitSound(tbl)
+	local s = Instance.new("Sound")
+
+	pcall(function()
+		for i,v in pairs(tbl) do
+			s[i] = v
+		end
+	end)
+
+	return s
+end
+
+local function MoveSlot(slot,dt,model)
+	local list = {}
+	
+	for i,v in pairs(slot:GetChildren()) do
+		if v:IsA("UIStroke") then
+			continue
+		end
+		
+		list[v.LayoutOrder] = v
+	end
+		
+	for i=1, #list do
+		if i > 1 then
+			list[i].Position = list[i-1].Position - UDim2.new(0, 0, 0, list[i].AbsoluteSize.Y)
+			
+			if list[i].AbsolutePosition.Y > 64 then
+				list[i-1]:Destroy()
+				
+				local ic = list[i]:Clone()
+				list[i].LayoutOrder = 1
+				ic.Image = chances[chooseRandomItem()].ImageId
+				ic.LayoutOrder = 2
+				ic.Position = list[i].Position - UDim2.new(0, 0, 0, list[i].AbsoluteSize.Y)
+				ic.Parent = slot
+				break
+			end
+			
+			continue
+		end
+		
+		list[i].Position += UDim2.new(0, 0, dt, 0)
+	end
+end
+
+local function StopSlot(slot,model)	
+	local x = 0
+	local slotInst = nil
+	
+	for i,v in pairs(slot:GetChildren()) do
+		if v:IsA("GuiObject") and v.AbsolutePosition.Y > x then
+			x = v.AbsolutePosition.Y
+			slotInst = v
+		end
+	end
+	
+	for i,v in pairs(slot:GetChildren()) do
+		if v:IsA("GuiObject") and v ~= slotInst then
+			v:Destroy()
+		end
+	end
+	
+	slotInst.Position = UDim2.new(0, 0, 0, 0)
+	
+	local sa = InitSound(sounds.ValueChange)
+	sa.Playing = true
+	sa.Parent = model.Monitor
+	
+	game.Debris:AddItem(sa, 5)
+end
+
+local function GetResult(monitor)
+	local res = {}
+	
+	for i,v in pairs(monitor:GetDescendants()) do
+		if v:IsA("ImageLabel") then
+			for name,value in pairs(chances) do
+				if chances[name].ImageId == v.Image then
+					table.insert(res, name)
+				end
+			end
+		end
+	end
+	
+	return res
+end
+
+local function IsWinResult(res)
+	local copies = 0
+	
+	for i,v in pairs(res) do
+		if v == res[math.clamp(i-1, 1, #res)] then
+			copies += 1
+		end
+	end
+	
+	return copies == 3
+end
+
+for i,v in pairs(script.Parent:GetChildren()) do
+	if v:IsA("Model") then
+		local click = v:FindFirstChild("Click")
+
+		if not click then
+			continue
+		end
+
+		local ui = v.Monitor.SurfaceGui
+		
+		ui.Play.Changed:Connect(function()
+			if ui.Play.Visible then
+				local s = InitSound({SoundId = "rbxassetid://3299794881", RollOffMaxDistance = 1000, RollOffMinDistance = 5})
+				s.Parent = v.Monitor
+				s.Playing = true
+				game.Debris:AddItem(s, 3)
+			end
+		end)
+
+		click.MouseClick:Connect(function(plr)
+			if InWork[v] then
+				return
+			end
+			
+			if (plr.Character:GetPivot().Position-v:GetPivot().Position).Magnitude > 10 then
+				return
+			end
+
+			InWork[v] = true
+			
+			if plr:FindFirstChild("leaderstats") then
+				local val = plr:FindFirstChild("leaderstats"):FindFirstChild(value)
+				
+				if val then
+					if val.Value < minPrice then
+						ui.Play.Text = "Чтобы поиграть в это казино у вас должно быть минимум: <font color=\"rgb(0, 255, 0)\">"..minPrice.." "..value.."</font>"
+						
+						delay(5, function()
+							InWork[v] = nil
+							ui.Play.Text = "Чтобы играть нажмите на меня"
+						end)
+						
+						return
+					else
+						val.Value -= minPrice
+					end
+				end
+			end
+			
+			ui.Play.Visible = false
+
+			local s = InitSound(sounds.Start)
+			s.Playing = true
+			s.Parent = v.Monitor
+
+			if not s.IsLoaded then
+				s.Loaded:Wait()
+			end
+			
+			wait(s.TimeLength + 1)
+
+			for i=1, 3 do
+				local index = chooseRandomItem()
+				ui.GameFrame["Slot"..tostring(i)].Icon.Image = chances[index].ImageId
+			end
+			
+			for i=1, 3 do
+				local index = chooseRandomItem()
+				local cl = ui.GameFrame["Slot"..i].Icon:Clone()
+				cl.LayoutOrder = 2
+				cl.Image = chances[index].ImageId
+				cl.Parent = ui.GameFrame["Slot"..i]
+			end
+			
+			local stop = {
+				{["ago"] = 2.5, ["indexdelet"] = 1},
+				{["ago"] = 5, ["indexdelet"] = 2},
+				{["ago"] = 7.5, ["indexdelet"] = 3},
+			}
+			
+			local sa = InitSound(sounds.Working)
+			sa.Playing = true
+			sa.Looped = true
+			sa.Parent = v.Monitor
+
+			ui.GameFrame.Visible = true
+			game.Debris:AddItem(s, 0)
+			
+			local timeago = 0
+			local t = 0
+			
+			local iswin = false
+			local wintitle = nil
+			
+			local function find(ind)
+				for i,v in pairs(stop) do
+					if v.indexdelet == ind then
+						return true
+					end
+				end
+				
+				return false
+			end
+			
+			InWork[v] = game:GetService("RunService").Heartbeat:Connect(function(dt)
+				if not plr:IsDescendantOf(game.Players) then
+					iswin = false
+					wintitle = nil
+					sa:Stop()
+					
+					for i,v in pairs(v:GetDescendants()) do
+						if v:IsA("PointLight") then
+							v.Color = Color3.fromRGB(85, 0, 0)
+							v.Enabled = true
+						end
+					end
+					
+					delay(1, function()
+						sa:Destroy()
+					end)
+					InWork[v]:Disconnect()
+					return
+				end
+				
+				timeago += dt
+				t += dt
+				
+				for i,v in pairs(v:GetDescendants()) do
+					if v:IsA("PointLight") then
+						if t > 0.05 and t < 0.1 then
+							v.Color = Color3.fromRGB(255, 255, 0)
+							v.Enabled = false
+						elseif t > 0.1 then
+							v.Enabled = true
+							t = 0
+						end
+					end
+				end
+				
+				if #stop<=0 then
+					local result = GetResult(v)
+					
+					if not IsWinResult(result) then
+						iswin = false
+						
+						local sa = InitSound(sounds.Lose)
+						sa.Playing = true
+						sa.Parent = v.Monitor
+						
+						game.Debris:AddItem(sa, 10)
+					else
+						wintitle = result[1]
+						iswin = true
+						v.Monitor.WinParticle:Emit(100)
+						
+						local sa = InitSound(sounds.Win)
+						sa.Playing = true
+						sa.Parent = v.Monitor
+						game.Debris:AddItem(sa, 10)
+					end
+					
+					for i,v in pairs(v:GetDescendants()) do
+						if v:IsA("PointLight") then
+							v.Color = Color3.fromRGB(85, 0, 0)
+							v.Enabled = true
+						end
+					end
+					
+					delay(5, function()
+						sa:Destroy()
+					end)
+					
+					sa:Stop()
+					InWork[v]:Disconnect()					
+					return
+				end
+								
+				for i=1, 3 do
+					if not find(i) then
+						continue
+					end
+					MoveSlot(ui.GameFrame["Slot"..tostring(i)], dt * 2.5, v)
+				end
+				
+				for i,va in pairs(stop) do
+					if timeago >= va.ago then
+						StopSlot(ui.GameFrame["Slot"..va.indexdelet], v)
+						table.remove(stop, i)
+					end
+				end
+			end)
+			
+			sa.AncestryChanged:Wait()
+			
+			ui.GameFrame.Visible = false
+			ui.Play.Visible = true
+			
+			if iswin then
+				plr.leaderstats[value].Value += chances[wintitle].MultiplierWin * minPrice
+				ui.Play.Text = ("<font color=\"rgb(255, 0, 0)\">%s</font>, Ваш выигрыш составляет: <font color=\"rgb(0, 255, 0)\">%s %s</font>"):format(plr.Name, chances[wintitle].MultiplierWin * minPrice, value)
+				task.wait(2.5)
+				ui.Play.Text = "Чтобы играть нажмите на меня"
+			end
+			
+			InWork[v] = nil
+		end)
+	end
+end
